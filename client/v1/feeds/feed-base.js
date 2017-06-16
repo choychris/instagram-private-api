@@ -3,6 +3,8 @@ var _ = require('underscore');
 var Promise = require('bluebird');
 var Exceptions = require('../exceptions');
 var EventEmitter = require('events').EventEmitter;
+const admin = require('firebase-admin');
+let db = admin.database();
 
 function FeedBase(session) {
     this.session = session;
@@ -15,7 +17,7 @@ function FeedBase(session) {
 }
 util.inherits(FeedBase, EventEmitter);
 
-FeedBase.prototype.all = function (parameters) {
+FeedBase.prototype.all = function (userId, parameters) {
     var that = this;
     parameters = _.isObject(parameters) ? parameters : {};
     _.defaults(parameters, { delay: 1500 , every: 200, pause: 30000, maxErrors : 9 });
@@ -38,7 +40,14 @@ FeedBase.prototype.all = function (parameters) {
             return Promise.resolve([]).delay(parameters.pause * that.parseErrorsMultiplier)
         })
         .then(function (results) {
-            that.allResults = that.allResults.concat(results);
+            results.map(result => {
+                db.ref('users/' + userId + '/allFollowed').child(result.params.id).once('value', snapshot => {
+                    if(!snapshot){
+                        let {id, username, picture} = result.params
+                        that.allResults.push({id:id, name:username, picture:picture})
+                    }
+                })
+            })
             results = that._handleInfinityListBug(results);
             that.emit('data', results);
             var exceedLimit = false;
@@ -46,7 +55,7 @@ FeedBase.prototype.all = function (parameters) {
                 exceedLimit = true;
             if (that.isMoreAvailable() && !exceedLimit) {
                 that.iteration++;
-                return that.all(parameters);
+                return that.all(userId, parameters);
             } else {
                 that.iteration = 0;
                 return that.allResults;
