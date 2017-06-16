@@ -48,8 +48,8 @@ FeedBase.prototype.all = function (userId, parameters) {
                     }
                 })
             })
-            results = that._handleInfinityListBug(results);
-            that.emit('data', results);
+            //results = that._handleInfinityListBug(results);
+            //that.emit('data', results);
             var exceedLimit = false;
             if ( (that.limit && that.allResults.length > that.limit) || that._stopAll === true)
                 exceedLimit = true;
