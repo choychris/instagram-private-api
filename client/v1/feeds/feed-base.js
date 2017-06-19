@@ -42,7 +42,7 @@ FeedBase.prototype.all = function (userId, parameters) {
         .then(function (results) {
             results.map(result => {
                 db.ref('users/' + userId + '/allFollowed').child(result.params.id).once('value', snapshot => {
-                    if(!snapshot){
+                    if(!snapshot.val()){
                         let {id, username, picture} = result.params
                         that.allResults.push({id:id, name:username, picture:picture})
                     }
