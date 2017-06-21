@@ -64,6 +64,53 @@ FeedBase.prototype.all = function (userId, parameters) {
 
 };
 
+FeedBase.prototype.getMediaLikers = function (Client, session, parameters) {
+    var that = this;
+    parameters = _.isObject(parameters) ? parameters : {};
+    _.defaults(parameters, { delay: 1500 , every: 200, pause: 30000, maxErrors : 9 });
+    // every N requests we take a pause
+    var delay = this.iteration == 0 ? 0 : this.iteration%parameters.every != 0 ? parameters.delay : parameters.pause;
+    return Promise.delay(delay)
+        .then(this.get.bind(this))
+        .then(function (results) {
+            // reset pause multiplier when we can execute requests again
+            that.parseErrorsMultiplier = 0;
+            return results;
+        })
+        // If ParseError, we assume that this is 403 forbidden HTML page, caused by "Too many requests". Just take a pause and retry.
+        .catch(Exceptions.ParseError, function () {
+            // Every consecutive ParseError makes delay befor new request longer. Otherwise we will never reach the end.
+            that.parseErrorsMultiplier++;
+            // When delay time is beyond reasonable, throw exception.
+            if(that.parseErrorsMultiplier > parameters.maxErrors)
+                throw new Exceptions.RequestsLimitError;
+            return Promise.resolve([]).delay(parameters.pause * that.parseErrorsMultiplier)
+        })
+        .then(function (results) {
+            let media = _.flatten(results);
+            media.map(each => {
+                Client.Media.likers(session, each.params.id)
+                .then(accounts => {
+                    let allaccounts = _.flatten(accounts);
+                    allaccounts.map(account => {
+                        that.allResults.push({id:account.params.id, name:account.params.username, picture:account.params.picture})
+                    })
+                })
+            })
+            let exceedLimit = false;
+            if (that.limit && that.allResults.length > that.limit)
+                exceedLimit = true;
+            if (that.isMoreAvailable() && !exceedLimit) {
+                that.iteration++;
+                return that.getMediaLikers(Client, session, parameters);
+            } else {
+                that.iteration = 0;
+                return that.allResults;
+            }
+        })
+
+};
+
 /* Instagram backend has a bug. Sometimes it response with next_max_id cursor, but actually there is no next subjects to
 * request. And when we trying to get next data, we got the same as previous. And so on to infinity.
 * to prevent such behaviour, we assume that every element in this.allResults must be unique.
